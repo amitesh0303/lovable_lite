@@ -68,8 +68,10 @@ export default function DashboardPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this project?')) return;
-    await fetch(`/api/projects/${id}`, { method: 'DELETE' });
-    setProjects((prev) => prev.filter((p) => p.id !== id));
+    const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+    }
   }
 
   async function handleDuplicate(project: Project) {
