@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateCodeEdit } from '@/lib/openai';
 import { supabase } from '@/lib/supabase';
+import { getLanguageFromPath } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -63,13 +64,4 @@ export async function POST(request: NextRequest) {
     console.error('Chat error:', error);
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });
   }
-}
-
-function getLanguageFromPath(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase();
-  const map: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescriptreact', js: 'javascript', jsx: 'javascriptreact',
-    css: 'css', json: 'json', md: 'markdown', html: 'html',
-  };
-  return map[ext || ''] || 'plaintext';
 }

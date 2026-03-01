@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getLanguageFromPath } from '@/lib/utils';
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -32,13 +33,4 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
-}
-
-function getLanguageFromPath(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase();
-  const map: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescriptreact', js: 'javascript', jsx: 'javascriptreact',
-    css: 'css', json: 'json', md: 'markdown', html: 'html',
-  };
-  return map[ext || ''] || 'plaintext';
 }

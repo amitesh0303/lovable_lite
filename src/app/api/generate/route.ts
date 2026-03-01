@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAppFromPrompt } from '@/lib/openai';
 import { supabase } from '@/lib/supabase';
+import { getLanguageFromPath } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -35,13 +36,4 @@ export async function POST(request: NextRequest) {
     console.error('Generation error:', error);
     return NextResponse.json({ error: 'Failed to generate app' }, { status: 500 });
   }
-}
-
-function getLanguageFromPath(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase();
-  const map: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescriptreact', js: 'javascript', jsx: 'javascriptreact',
-    css: 'css', json: 'json', md: 'markdown', html: 'html',
-  };
-  return map[ext || ''] || 'plaintext';
 }

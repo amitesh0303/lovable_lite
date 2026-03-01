@@ -4,9 +4,9 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { projectId, githubToken, owner, repoName } = body;
+  const { projectId, token, owner, repoName } = body;
 
-  if (!projectId || !githubToken || !owner || !repoName) {
+  if (!projectId || !token || !owner || !repoName) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     });
 
     const repoUrl = await exportToGitHub(
-      githubToken,
+      token,
       owner,
       repoName,
       fileMap,
