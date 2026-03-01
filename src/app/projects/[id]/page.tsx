@@ -118,6 +118,7 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
   const [githubForm, setGithubForm] = useState({ token: '', owner: '', repoName: '' });
   const [exportLoading, setExportLoading] = useState(false);
   const [exportUrl, setExportUrl] = useState('');
+  const [previewKey, setPreviewKey] = useState(0);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const hasGeneratedRef = useRef(false);
 
@@ -408,7 +409,7 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
                     </button>
                   ))}
                 </div>
-                <button className="p-1.5 text-gray-400 hover:text-gray-200 rounded" onClick={() => {}}>
+                <button className="p-1.5 text-gray-400 hover:text-gray-200 rounded" onClick={() => setPreviewKey((k) => k + 1)} title="Refresh preview">
                   <RefreshCw size={14} />
                 </button>
               </div>
@@ -419,6 +420,7 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
                 >
                   {files.length > 0 ? (
                     <iframe
+                      key={previewKey}
                       srcDoc={`<!DOCTYPE html>
 <html>
 <head>
