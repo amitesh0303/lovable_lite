@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { use, useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
@@ -10,6 +10,15 @@ import {
 } from 'lucide-react';
 import { Project, ProjectFile, ChatMessage } from '@/types';
 import { getLanguageFromPath } from '@/lib/utils';
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
@@ -102,7 +111,8 @@ function FileTreeItem({
   );
 }
 
-function ProjectEditorContent({ params }: { params: { id: string } }) {
+function ProjectEditorContent({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const searchParams = useSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
@@ -119,16 +129,24 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportUrl, setExportUrl] = useState('');
   const [previewKey, setPreviewKey] = useState(0);
+  const [saveError, setSaveError] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const hasGeneratedRef = useRef(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const initialPrompt = searchParams.get('prompt');
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchProject();
     fetchFiles();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id]);
+  }, [id]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -143,12 +161,12 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
   }, [initialPrompt]);
 
   async function fetchProject() {
-    const res = await fetch(`/api/projects/${params.id}`);
+    const res = await fetch(`/api/projects/${id}`);
     if (res.ok) setProject(await res.json());
   }
 
   async function fetchFiles() {
-    const res = await fetch(`/api/projects/${params.id}/files`);
+    const res = await fetch(`/api/projects/${id}/files`);
     if (res.ok) {
       const data = await res.json();
       setFiles(Array.isArray(data) ? data : []);
@@ -165,14 +183,14 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, projectId: params.id }),
+        body: JSON.stringify({ prompt, projectId: id }),
       });
       if (res.ok) {
         await fetchFiles();
         setGeneratePrompt('');
         setChatMessages((prev) => [
           ...prev,
-          { id: Date.now().toString(), project_id: params.id, role: 'assistant', content: `✨ Generated app from prompt: "${prompt}"`, created_at: new Date().toISOString() },
+          { id: Date.now().toString(), project_id: id, role: 'assistant', content: `✨ Generated app from prompt: "${prompt}"`, created_at: new Date().toISOString() },
         ]);
       }
     } finally {
@@ -187,20 +205,20 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
     setChatInput('');
     setChatMessages((prev) => [
       ...prev,
-      { id: Date.now().toString(), project_id: params.id, role: 'user', content: msg, created_at: new Date().toISOString() },
+      { id: Date.now().toString(), project_id: id, role: 'user', content: msg, created_at: new Date().toISOString() },
     ]);
     setChatLoading(true);
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, projectId: params.id }),
+        body: JSON.stringify({ message: msg, projectId: id }),
       });
       if (res.ok) {
         const data = await res.json();
         setChatMessages((prev) => [
           ...prev,
-          { id: (Date.now() + 1).toString(), project_id: params.id, role: 'assistant', content: data.message, created_at: new Date().toISOString() },
+          { id: (Date.now() + 1).toString(), project_id: id, role: 'assistant', content: data.message, created_at: new Date().toISOString() },
         ]);
         if (data.updatedFiles && Object.keys(data.updatedFiles).length > 0) {
           await fetchFiles();
@@ -216,11 +234,19 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
     setFiles((prev) =>
       prev.map((f) => (f.path === selectedFile ? { ...f, content: value } : f))
     );
-    await fetch(`/api/projects/${params.id}/files`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: { [selectedFile]: value } }),
-    });
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/projects/${id}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: { [selectedFile]: value } }),
+        });
+        setSaveError(!res.ok);
+      } catch {
+        setSaveError(true);
+      }
+    }, 800);
   }
 
   async function handleGitHubExport(e: React.FormEvent) {
@@ -230,7 +256,7 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
       const res = await fetch('/api/github/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: params.id, ...githubForm }),
+        body: JSON.stringify({ projectId: id, ...githubForm }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -340,6 +366,9 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
               <div className="px-4 py-2 bg-gray-800 border-b border-gray-700 flex items-center gap-2 shrink-0">
                 <FileCode size={14} className="text-gray-400" />
                 <span className="text-sm text-gray-300 font-mono">{selectedFile}</span>
+                {saveError && (
+                  <span className="ml-auto text-xs text-red-400">Save failed</span>
+                )}
               </div>
               <div className="flex-1 overflow-hidden">
                 <MonacoEditor
@@ -433,10 +462,10 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
   <div id="preview-content" class="p-6 font-sans">
     <div class="text-center py-12">
       <div class="text-5xl mb-4">🚀</div>
-      <h2 class="text-2xl font-bold text-gray-800 mb-2">${project?.name || 'Your App'}</h2>
-      <p class="text-gray-500">${project?.description || 'Preview not available in browser'}</p>
+      <h2 class="text-2xl font-bold text-gray-800 mb-2">${escapeHtml(project?.name || 'Your App')}</h2>
+      <p class="text-gray-500">${escapeHtml(project?.description || 'Preview not available in browser')}</p>
       <div class="mt-6 grid grid-cols-2 gap-3 max-w-sm mx-auto">
-        ${files.slice(0, 4).map((f) => `<div class="bg-blue-50 rounded-lg p-3 text-left"><div class="text-xs font-medium text-blue-800 truncate">${f.path}</div><div class="text-xs text-gray-500 mt-1">${f.language}</div></div>`).join('')}
+        ${files.slice(0, 4).map((f) => `<div class="bg-blue-50 rounded-lg p-3 text-left"><div class="text-xs font-medium text-blue-800 truncate">${escapeHtml(f.path)}</div><div class="text-xs text-gray-500 mt-1">${escapeHtml(f.language)}</div></div>`).join('')}
       </div>
     </div>
   </div>
@@ -591,9 +620,7 @@ function ProjectEditorContent({ params }: { params: { id: string } }) {
   );
 }
 
-import { Suspense } from 'react';
-
-export default function ProjectEditorPage({ params }: { params: { id: string } }) {
+export default function ProjectEditorPage({ params }: { params: Promise<{ id: string }> }) {
   return (
     <Suspense fallback={
       <div className="h-screen flex items-center justify-center bg-gray-900">
